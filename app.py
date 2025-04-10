@@ -899,52 +899,56 @@ elif pagina == "Aquisição e Retenção":
         )
         fig_customers.update_layout(dragmode=False, hovermode='x unified')
         st.plotly_chart(fig_customers, use_container_width=True)
-        
-        # Insights sobre evolução de clientes
-        st.markdown("""
-        **💡 Insights:**
-        - **Crescimento de Novos Clientes**: {growth_rate}% em relação ao período anterior
-        - **Taxa de Retenção**: {retention_rate}% dos clientes realizaram mais de uma compra
-        - **Tendência**: {trend_analysis}
-        """.format(
-            growth_rate=format_value((acquisition_kpis['new_customers']['customer_unique_id'].iloc[-1] / 
-                                    acquisition_kpis['new_customers']['customer_unique_id'].iloc[0] - 1) * 100),
-            retention_rate=format_value(acquisition_kpis['repurchase_rate'] * 100),
-            trend_analysis="Crescimento consistente" if acquisition_kpis['new_customers']['customer_unique_id'].iloc[-1] > 
-                         acquisition_kpis['new_customers']['customer_unique_id'].iloc[0] else "Estável"
-        ))
     
     with col2:
-        # Funil de Conversão
-        st.subheader("🔄 Funil de Conversão")
+        # Funil de Status dos Pedidos
+        st.subheader("🔄 Funil de Pedidos")
+        
+        # Calcular quantidade de pedidos em cada etapa
+        funnel_data = filtered_df.groupby('order_status').size().reset_index(name='count')
+        
+        # Definir ordem correta das etapas
+        status_order = ['created', 'approved', 'shipped', 'delivered']
+        status_labels = {
+            'created': 'Criados',
+            'approved': 'Aprovados',
+            'shipped': 'Enviados',
+            'delivered': 'Entregues'
+        }
+        
+        # Filtrar e ordenar dados do funil
+        funnel_data = funnel_data[funnel_data['order_status'].isin(status_order)]
+        funnel_data['order_status'] = funnel_data['order_status'].map(status_labels)
+        funnel_data = funnel_data.sort_values(by='order_status', key=lambda x: pd.Categorical(x, [status_labels[s] for s in status_order]))
+        
+        # Criar gráfico de funil
         fig_funnel = go.Figure(go.Funnel(
-            y=acquisition_kpis['funnel_data']['Etapa'],
-            x=acquisition_kpis['funnel_data']['Quantidade'],
+            y=funnel_data['order_status'],
+            x=funnel_data['count'],
             textinfo="value+percent initial",
             textposition="inside",
-            marker=dict(color=["#1f77b4", "#ff7f0e", "#2ca02c"])
+            marker=dict(color=["#1f77b4", "#2ca02c", "#ff7f0e", "#9467bd"])
         ))
+        
+        # Calcular taxas de conversão entre etapas
+        conversion_rates = []
+        for i in range(len(funnel_data) - 1):
+            current = funnel_data.iloc[i]['count']
+            next_step = funnel_data.iloc[i + 1]['count']
+            rate = (next_step / current * 100) if current > 0 else 0
+            conversion_rates.append(f"{rate:.1f}%")
+        
         fig_funnel.update_layout(
-            title="Funil de Conversão",
+            title="Funil de Conversão de Pedidos",
             showlegend=False
         )
         fig_funnel.update_layout(dragmode=False, hovermode=False)
         st.plotly_chart(fig_funnel, use_container_width=True)
         
-        # Insights sobre o funil
-        st.markdown("""
-        **💡 Insights:**
-        - **Taxa de Conversão**: {conversion_rate}% dos visitantes se tornam clientes
-        - **Ponto de Abandono**: {drop_off_point}
-        - **Oportunidade**: {opportunity}
-        """.format(
-            conversion_rate=format_value(acquisition_kpis['funnel_data']['Quantidade'].iloc[-1] / 
-                                      acquisition_kpis['funnel_data']['Quantidade'].iloc[0] * 100),
-            drop_off_point="Maior perda na etapa de consideração" if acquisition_kpis['funnel_data']['Quantidade'].iloc[1] < 
-                         acquisition_kpis['funnel_data']['Quantidade'].iloc[0] * 0.5 else "Distribuição equilibrada",
-            opportunity="Otimizar processo de consideração" if acquisition_kpis['funnel_data']['Quantidade'].iloc[1] < 
-                      acquisition_kpis['funnel_data']['Quantidade'].iloc[0] * 0.5 else "Manter eficiência atual"
-        ))
+        # Mostrar taxas de conversão entre etapas
+        st.markdown("**Taxa de Conversão entre Etapas:**")
+        for i, rate in enumerate(conversion_rates):
+            st.markdown(f"- {funnel_data.iloc[i]['order_status']} → {funnel_data.iloc[i+1]['order_status']}: {rate}")
     
     st.markdown("---")
     
