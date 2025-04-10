@@ -151,6 +151,73 @@ def calculate_kpis(df, marketing_spend=50000, date_range=None):
         "lost_revenue": lost_revenue
     }
 
+def calculate_churn_features(df, cutoff_date):
+    """Calcula as features derivadas para análise de churn."""
+    # Converter colunas de data para datetime
+    df['order_purchase_timestamp'] = pd.to_datetime(df['order_purchase_timestamp'])
+    df['order_delivered_customer_date'] = pd.to_datetime(df['order_delivered_customer_date'])
+    
+    # Filtrar dados antes da data de corte
+    df_before_cutoff = df[df['order_purchase_timestamp'] <= cutoff_date]
+    
+    # Calcular total gasto por cliente
+    total_spent = df_before_cutoff.groupby('customer_unique_id')['payment_value'].sum()
+    
+    # Calcular número de pedidos únicos por cliente
+    num_orders = df_before_cutoff.groupby('customer_unique_id')['order_id'].nunique()
+    
+    # Calcular ticket médio por cliente
+    avg_order_value = total_spent / num_orders
+    
+    # Calcular variação dos tickets por cliente
+    std_order_value = df_before_cutoff.groupby('customer_unique_id')['payment_value'].std()
+    
+    # Calcular média de parcelas por cliente
+    avg_installments = df_before_cutoff.groupby('customer_unique_id')['payment_installments'].mean()
+    
+    # Calcular média das avaliações por cliente
+    avg_review = df_before_cutoff.groupby('customer_unique_id')['review_score'].mean()
+    
+    # Calcular taxa de cancelamento por cliente
+    cancel_rate = df_before_cutoff[df_before_cutoff['order_status'] == 'canceled'].groupby('customer_unique_id')['order_id'].count() / num_orders
+    
+    # Calcular recência (dias desde a última compra) por cliente
+    last_purchase_date = df_before_cutoff.groupby('customer_unique_id')['order_purchase_timestamp'].max()
+    recency = (cutoff_date - last_purchase_date).dt.days
+    
+    # Criar DataFrame com as features derivadas
+    churn_features = pd.DataFrame({
+        'total_spent': total_spent,
+        'num_orders': num_orders,
+        'avg_order_value': avg_order_value,
+        'std_order_value': std_order_value,
+        'avg_installments': avg_installments,
+        'avg_review': avg_review,
+        'cancel_rate': cancel_rate,
+        'recency': recency
+    }).reset_index()
+    
+    return churn_features
+
+def define_churn(df, cutoff_date):
+    """Define a variável de churn com base na data de corte."""
+    # Converter colunas de data para datetime
+    df['order_purchase_timestamp'] = pd.to_datetime(df['order_purchase_timestamp'])
+    
+    # Identificar clientes ativos antes da data de corte
+    active_customers = df[df['order_purchase_timestamp'] <= cutoff_date]['customer_unique_id'].unique()
+    
+    # Identificar clientes que compraram após a data de corte
+    customers_after_cutoff = df[df['order_purchase_timestamp'] > cutoff_date]['customer_unique_id'].unique()
+    
+    # Definir churn: 1 se não comprou após a data de corte, 0 caso contrário
+    churn_status = {customer: 0 if customer in customers_after_cutoff else 1 for customer in active_customers}
+    
+    # Criar DataFrame com o status de churn
+    churn_df = pd.DataFrame(list(churn_status.items()), columns=['customer_unique_id', 'churn'])
+    
+    return churn_df
+
 if __name__ == "__main__":
     df = load_data()
     kpis = calculate_kpis(df)

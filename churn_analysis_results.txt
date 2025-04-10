@@ -1,0 +1,57 @@
+Análise de Churn - Olist
+Data de execução: 2025-04-06 19:54:01
+
+Configurações:
+Data de corte para análise de churn: 2018-04-17 00:00:00
+Método de rebalanceamento: smote
+Tipo de modelo: random_forest
+Class weight: balanced
+
+Distribuição de churn:
+Não-churn (0): 595
+Churn (1): 67389
+Taxa de churn: 99.12%
+
+Top correlações com churn:
+churn: 1.0000
+recency: 0.0212
+cancel_rate: 0.0011
+avg_order_value: -0.0034
+avg_installments: -0.0064
+total_spent: -0.0083
+avg_review: -0.0109
+std_order_value: -0.0223
+num_orders: -0.0573
+
+Métricas de performance:
+Accuracy: 0.9067
+Precision (weighted): 0.9828
+Recall (weighted): 0.9067
+F1 (macro): 0.4848
+F1 (weighted): 0.9429
+AUC-ROC: 0.5365
+Average Precision Score: 0.9921
+
+Relatório de classificação:
+              precision    recall  f1-score   support
+
+           0       0.01      0.10      0.02       179
+           1       0.99      0.91      0.95     20217
+
+    accuracy                           0.91     20396
+   macro avg       0.50      0.51      0.48     20396
+weighted avg       0.98      0.91      0.94     20396
+
+Matriz de confusão:
+[[   18   161]
+ [ 1741 18476]]
+
+Importância das features:
+Feature 7: 0.3429
+Feature 0: 0.1747
+Feature 2: 0.1733
+Feature 4: 0.1733
+Feature 5: 0.0903
+Feature 3: 0.0310
+Feature 1: 0.0115
+Feature 6: 0.0031
