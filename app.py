@@ -904,39 +904,42 @@ elif pagina == "Aquisição e Retenção":
         # Funil de Status dos Pedidos
         st.subheader("🔄 Funil de Pedidos")
         
-        # Calcular quantidade de pedidos em cada etapa
-        funnel_data = filtered_df.groupby('order_status').size().reset_index(name='count')
+        # Preparar dados para o funil
+        # Primeiro, vamos ordenar os pedidos por data para garantir a sequência correta
+        funnel_df = filtered_df.sort_values('order_purchase_timestamp')
         
-        # Definir ordem correta das etapas
-        status_order = ['created', 'approved', 'shipped', 'delivered']
-        status_labels = {
-            'created': 'Criados',
-            'approved': 'Aprovados',
-            'shipped': 'Enviados',
-            'delivered': 'Entregues'
+        # Calcular quantidade de pedidos em cada etapa
+        funnel_counts = {
+            'created': len(funnel_df),
+            'approved': len(funnel_df[funnel_df['order_status'].isin(['approved', 'shipped', 'delivered'])]),
+            'shipped': len(funnel_df[funnel_df['order_status'].isin(['shipped', 'delivered'])]),
+            'delivered': len(funnel_df[funnel_df['order_status'] == 'delivered'])
         }
         
-        # Filtrar e ordenar dados do funil
-        funnel_data = funnel_data[funnel_data['order_status'].isin(status_order)]
-        funnel_data['order_status'] = funnel_data['order_status'].map(status_labels)
-        funnel_data = funnel_data.sort_values(by='order_status', key=lambda x: pd.Categorical(x, [status_labels[s] for s in status_order]))
+        # Criar DataFrame para o funil
+        funnel_data = pd.DataFrame({
+            'status': list(funnel_counts.keys()),
+            'count': list(funnel_counts.values())
+        })
+        
+        # Definir labels em português
+        status_labels = {
+            'created': 'Pedidos Criados',
+            'approved': 'Pedidos Aprovados',
+            'shipped': 'Pedidos Enviados',
+            'delivered': 'Pedidos Entregues'
+        }
+        
+        funnel_data['status_label'] = funnel_data['status'].map(status_labels)
         
         # Criar gráfico de funil
         fig_funnel = go.Figure(go.Funnel(
-            y=funnel_data['order_status'],
+            y=funnel_data['status_label'],
             x=funnel_data['count'],
             textinfo="value+percent initial",
             textposition="inside",
             marker=dict(color=["#1f77b4", "#2ca02c", "#ff7f0e", "#9467bd"])
         ))
-        
-        # Calcular taxas de conversão entre etapas
-        conversion_rates = []
-        for i in range(len(funnel_data) - 1):
-            current = funnel_data.iloc[i]['count']
-            next_step = funnel_data.iloc[i + 1]['count']
-            rate = (next_step / current * 100) if current > 0 else 0
-            conversion_rates.append(f"{rate:.1f}%")
         
         fig_funnel.update_layout(
             title="Funil de Conversão de Pedidos",
@@ -945,10 +948,48 @@ elif pagina == "Aquisição e Retenção":
         fig_funnel.update_layout(dragmode=False, hovermode=False)
         st.plotly_chart(fig_funnel, use_container_width=True)
         
-        # Mostrar taxas de conversão entre etapas
+        # Calcular e mostrar taxas de conversão entre etapas
         st.markdown("**Taxa de Conversão entre Etapas:**")
-        for i, rate in enumerate(conversion_rates):
-            st.markdown(f"- {funnel_data.iloc[i]['order_status']} → {funnel_data.iloc[i+1]['order_status']}: {rate}")
+        for i in range(len(funnel_data) - 1):
+            current_count = funnel_data.iloc[i]['count']
+            next_count = funnel_data.iloc[i + 1]['count']
+            if current_count > 0:
+                conversion_rate = (next_count / current_count) * 100
+                current_label = funnel_data.iloc[i]['status_label']
+                next_label = funnel_data.iloc[i + 1]['status_label']
+                
+                # Adicionar ícone baseado na taxa de conversão
+                if conversion_rate >= 95:
+                    icon = "🟢"  # Verde para alta conversão
+                elif conversion_rate >= 85:
+                    icon = "🟡"  # Amarelo para conversão média
+                else:
+                    icon = "🔴"  # Vermelho para baixa conversão
+                
+                st.markdown(f"{icon} {current_label} → {next_label}: {conversion_rate:.1f}%")
+        
+        # Adicionar insights baseados nos dados
+        st.markdown("---")
+        st.markdown("**💡 Insights do Funil:**")
+        
+        # Calcular taxa de aprovação
+        approval_rate = (funnel_counts['approved'] / funnel_counts['created']) * 100
+        # Calcular taxa de entrega
+        delivery_rate = (funnel_counts['delivered'] / funnel_counts['shipped']) * 100
+        
+        insights = []
+        
+        if approval_rate < 90:
+            insights.append(f"⚠️ Taxa de aprovação de pedidos está em {approval_rate:.1f}%. Verificar processo de aprovação.")
+        
+        if delivery_rate < 95:
+            insights.append(f"⚠️ Taxa de entrega está em {delivery_rate:.1f}%. Avaliar performance logística.")
+        
+        if not insights:
+            insights.append("✅ Funil de pedidos operando com taxas saudáveis de conversão.")
+        
+        for insight in insights:
+            st.markdown(insight)
     
     st.markdown("---")
     
@@ -1092,21 +1133,69 @@ elif pagina == "Aquisição e Retenção":
         col3.metric("Razão LTV/CAC", format_value(current_ratio))
         col4.markdown(f"<h3 style='color: {status_color};'>{status}</h3>", unsafe_allow_html=True)
         
-        # Análise de tendência
-        if len(monthly_metrics) >= 3:
-            recent_ratio = monthly_metrics['ltv_cac_ratio'].tail(3).mean()
-            older_ratio = monthly_metrics['ltv_cac_ratio'].head(3).mean()
-            trend = (recent_ratio - older_ratio) / older_ratio * 100 if older_ratio > 0 else 0
+        # Análise de tendência dinâmica
+        st.markdown("**📈 Análise de Tendência**")
+        
+        if len(monthly_metrics) >= 2:
+            # Calcular período analisado
+            start_date = pd.to_datetime(monthly_metrics['order_purchase_timestamp'].iloc[0])
+            end_date = pd.to_datetime(monthly_metrics['order_purchase_timestamp'].iloc[-1])
+            meses_filtrados = ((end_date.year - start_date.year) * 12 + end_date.month - start_date.month) + 1
             
-            st.markdown("""
-            **📈 Análise de Tendência**
+            # Calcular médias para diferentes períodos
+            n_months = min(3, len(monthly_metrics))  # Usar 3 meses ou menos se não houver dados suficientes
+            recent_ratio = monthly_metrics['ltv_cac_ratio'].tail(n_months).mean()
+            older_ratio = monthly_metrics['ltv_cac_ratio'].head(n_months).mean()
             
-            {trend_analysis}
-            """.format(
-                trend_analysis=f"🟢 A razão LTV/CAC está em tendência de **alta** (+{format_value(trend)}% nos últimos 3 meses). Isso indica que a eficiência de aquisição de clientes está melhorando." if trend > 10 else
-                             f"🔴 A razão LTV/CAC está em tendência de **baixa** ({format_value(trend)}% nos últimos 3 meses). Isso indica que a eficiência de aquisição de clientes está piorando." if trend < -10 else
-                             f"⚪ A razão LTV/CAC está **estável** ({format_value(trend)}% nos últimos 3 meses)."
-            ))
+            # Calcular variação percentual
+            if older_ratio > 0:
+                delta_percent = ((recent_ratio - older_ratio) / older_ratio) * 100
+            else:
+                delta_percent = 0
+            
+            # Determinar direção da tendência e ícone
+            if delta_percent > 10:
+                trend_icon = "📈"
+                trend_color = "green"
+                trend_text = "alta"
+            elif delta_percent < -10:
+                trend_icon = "📉"
+                trend_color = "red"
+                trend_text = "queda"
+            else:
+                trend_icon = "➡️"
+                trend_color = "gray"
+                trend_text = "estável"
+            
+            # Criar texto de período
+            if meses_filtrados == 1:
+                periodo_texto = "no último mês"
+            else:
+                periodo_texto = f"nos últimos {meses_filtrados} meses"
+            
+            # Exibir análise de tendência
+            st.markdown(f"""
+            <div style='
+                padding: 20px;
+                border-radius: 5px;
+                border-left: 5px solid {trend_color};
+                background-color: rgba(0,0,0,0.05);
+            '>
+                {trend_icon} A razão LTV/CAC está em <span style='color: {trend_color};'><strong>{trend_text}</strong></span><br>
+                Variação de <strong>{delta_percent:+.1f}%</strong> {periodo_texto}
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Adicionar detalhamento
+            with st.expander("Ver detalhes da análise"):
+                st.markdown(f"""
+                - Período analisado: {start_date.strftime('%b/%Y')} a {end_date.strftime('%b/%Y')}
+                - LTV/CAC médio período inicial: {format_value(older_ratio)}
+                - LTV/CAC médio período recente: {format_value(recent_ratio)}
+                - Meses considerados por período: {n_months}
+                """)
+        else:
+            st.warning("⚠️ Período insuficiente para análise de tendência (mínimo 2 meses)")
     
     st.markdown("---")
     
